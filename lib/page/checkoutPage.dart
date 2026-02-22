@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:decafe_app/model/dataModel.dart';
 import 'package:decafe_app/model/apiUtils.dart';
-import 'package:decafe_app/page/mainMenuPage.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 
@@ -30,10 +28,9 @@ class _CheckoutPageState extends State<CheckoutPage>
   int subTotalCheckOut = 0;
   int tax = 0;
   Timer? _timer;
-  TextEditingController _notes = TextEditingController(text: "");
+  final TextEditingController _notes = TextEditingController(text: "");
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     _tabCategory = TabController(length: widget.categories.length, vsync: this);
     _tabDineIn = TabController(length: 2, vsync: this);
@@ -42,23 +39,26 @@ class _CheckoutPageState extends State<CheckoutPage>
 
   @override
   void dispose() {
-    // TODO: implement dispose
-    super.dispose();
+    _timer?.cancel();
+    _notes.dispose();
     _tabDineIn?.dispose();
     _tabCategory?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     tax = (subTotalCheckOut * (10 / 100)).toInt();
     grandTotal = subTotalCheckOut + tax;
-    return WillPopScope(
+    return PopScope(
+        canPop: false,
         child: Scaffold(
           resizeToAvoidBottomInset: false,
-          body: Container(
-            height: MediaQuery.of(context).size.height,
-            child: Row(
-              children: [
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final checkoutContent = Row(
+                  children: [
                 Flexible(
                   flex: 1,
                   child: Container(
@@ -135,9 +135,7 @@ class _CheckoutPageState extends State<CheckoutPage>
                                       color: Colors.white,
                                     ),
                                     child: ListView.builder(
-                                      itemCount: widget.orders != null
-                                          ? widget.orders.length
-                                          : 0,
+                                      itemCount: widget.orders.length,
                                       itemBuilder: ((context, index) =>
                                           cardCheckoutModel(
                                               widget.orders[index])),
@@ -227,12 +225,8 @@ class _CheckoutPageState extends State<CheckoutPage>
                                                               child: ListView
                                                                   .builder(
                                                                 itemCount: widget
-                                                                            .orders !=
-                                                                        null
-                                                                    ? widget
-                                                                        .orders
-                                                                        .length
-                                                                    : 0,
+                                                                    .orders
+                                                                    .length,
                                                                 itemBuilder: ((context,
                                                                         index) =>
                                                                     paymentProductList(
@@ -476,28 +470,49 @@ class _CheckoutPageState extends State<CheckoutPage>
                                                             50),
                                                     color: Colors.transparent,
                                                     child: InkWell(
-                                                      onTap: () {
-                                                        var postOrder = Order(
-                                                            isDinein: _tabDineIn!
+                                                      onTap: () async {
+                                                        try {
+                                                          final postOrder = Order(
+                                                            isDinein:
+                                                                _tabDineIn!
                                                                         .index !=
-                                                                    1
-                                                                ? true
-                                                                : false,
+                                                                    1,
                                                             listOrder: widget
                                                                 .orders
                                                                 .map((e) =>
                                                                     e.toJson())
-                                                                .toList());
+                                                                .toList(),
+                                                          );
 
-                                                        postData.post(
-                                                          postOrder.toJson(),
-                                                        );
-                                                        widget.orders.clear();
-                                                        showOrderAccept()
-                                                            .then((value) {
-                                                          Navigator.pop(context,
+                                                          await PostData.post(
+                                                            postOrder.toJson(),
+                                                          );
+                                                          if (!mounted) return;
+
+                                                          widget.orders.clear();
+                                                          await showOrderAccept();
+                                                          if (!mounted) return;
+
+                                                          Navigator.pop(
+                                                              context,
                                                               widget.orders);
-                                                        });
+                                                        } catch (error) {
+                                                          if (!mounted) return;
+                                                          ScaffoldMessenger.of(
+                                                                  context)
+                                                              .showSnackBar(
+                                                            const SnackBar(
+                                                              content: Text(
+                                                                  "Server order tidak tersedia. Order dijalankan mode lokal."),
+                                                            ),
+                                                          );
+                                                          widget.orders.clear();
+                                                          await showOrderAccept();
+                                                          if (!mounted) return;
+                                                          Navigator.pop(
+                                                              context,
+                                                              widget.orders);
+                                                        }
                                                       },
                                                       borderRadius:
                                                           BorderRadius.circular(
@@ -561,17 +576,29 @@ class _CheckoutPageState extends State<CheckoutPage>
                     ),
                   ),
                 ),
-              ],
+                  ],
+                );
+
+                if (constraints.maxWidth < 1100) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: 1100,
+                      height: constraints.maxHeight,
+                      child: checkoutContent,
+                    ),
+                  );
+                }
+
+                return checkoutContent;
+              },
             ),
           ),
-        ),
-        onWillPop: () async => false);
+        ));
   }
 
   List<Widget> tabCategories(List<Categories> dataCategory) {
-    return dataCategory != null
-        ? dataCategory.map((e) => categoryModel(e.icon)).toList()
-        : [];
+    return dataCategory.map((e) => categoryModel(e.icon)).toList();
   }
 
   Widget categoryModel(String image) {
@@ -736,11 +763,15 @@ class _CheckoutPageState extends State<CheckoutPage>
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(4),
         child: InkWell(
-          onTap: () {
+          onTap: () async {
+            _notes.text = order.notes ?? "";
+            await giveNote();
+            if (!mounted) return;
             setState(() {
-              giveNote().then((value) => order.notes = _notes.text);
-              _notes.clear();
+              final trimmedNotes = _notes.text.trim();
+              order.notes = trimmedNotes.isEmpty ? null : trimmedNotes;
             });
+            _notes.clear();
           },
           borderRadius: BorderRadius.circular(4),
           child: Center(
@@ -930,12 +961,15 @@ class _CheckoutPageState extends State<CheckoutPage>
     );
   }
 
-  Future showOrderAccept() => showDialog(
+  Future<void> showOrderAccept() => showDialog(
         barrierDismissible: true,
         context: context,
         builder: (context) {
-          _timer = Timer(Duration(seconds: 4), () {
-            Navigator.of(context).pop();
+          _timer?.cancel();
+          _timer = Timer(const Duration(seconds: 4), () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
           });
           return AlertDialog(
             elevation: 4,
@@ -988,14 +1022,15 @@ class _CheckoutPageState extends State<CheckoutPage>
                     ),
                     ElevatedButton(
                       style: ButtonStyle(
-                        backgroundColor: MaterialStateProperty.all<Color>(
+                        backgroundColor: WidgetStateProperty.all<Color>(
                           Color.fromRGBO(10, 155, 14, 1),
                         ),
-                        padding: MaterialStateProperty.all<EdgeInsets>(
+                        padding: WidgetStateProperty.all<EdgeInsets>(
                           EdgeInsets.symmetric(horizontal: 40),
                         ),
                       ),
                       onPressed: () {
+                        _timer?.cancel();
                         Navigator.of(context).pop();
                       },
                       child: Text(
@@ -1014,7 +1049,7 @@ class _CheckoutPageState extends State<CheckoutPage>
         },
       );
 
-  Future giveNote() => showDialog(
+  Future<void> giveNote() => showDialog(
         barrierDismissible: true,
         context: context,
         builder: (context) {
@@ -1063,17 +1098,15 @@ class _CheckoutPageState extends State<CheckoutPage>
                     widthFactor: 1,
                     child: ElevatedButton(
                       style: ButtonStyle(
-                        backgroundColor: MaterialStateProperty.all<Color>(
+                        backgroundColor: WidgetStateProperty.all<Color>(
                           Color.fromRGBO(148, 180, 159, 1),
                         ),
-                        padding: MaterialStateProperty.all<EdgeInsets>(
+                        padding: WidgetStateProperty.all<EdgeInsets>(
                           EdgeInsets.symmetric(horizontal: 40),
                         ),
                       ),
                       onPressed: () {
                         Navigator.of(context).pop();
-                        setState(() {
-                        });
                       },
                       child: Text(
                         "Done",

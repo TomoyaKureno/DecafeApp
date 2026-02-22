@@ -16,63 +16,115 @@ class _MainMenuState extends State<MainMenu>
   int idx = 0;
   final formatter = intl.NumberFormat.decimalPattern();
   late Future<List<Categories>> dataAfterFetch;
-  List<Categories>? data;
-  TextEditingController _searchProduct = TextEditingController();
+  final TextEditingController _searchProduct = TextEditingController();
   TabController? _tabController;
   List<OrderMenu> orders = [];
   int subTotal = 0;
   List<Categories>? categories;
   List<List<Menu>>? menu;
   List<List<Menu>>? categoriesToMenu;
-  @override
-  void initState() {
-    // TODO: implement initState
-    super.initState();
-    dataAfterFetch = fetchData();
-    dataAfterFetch.then(((value) {
-      setState(() {
-        data = value;
-      });
-      _tabController = TabController(
-          length: data!.length != null ? data!.length : 0, vsync: this);
-      _tabController!.addListener(() {
-        setState(() {
-          idx = _tabController!.index;
-        });
-      });
-    }));
+
+  void _onTabChanged() {
+    if (_tabController == null || idx == _tabController!.index) {
+      return;
+    }
+    setState(() {
+      idx = _tabController!.index;
+    });
   }
 
-  Future<List<Categories>> fetchData() async {
-    return await Categories.fetchCategories();
+  @override
+  void initState() {
+    super.initState();
+    dataAfterFetch = fetchData();
+    dataAfterFetch.then((value) {
+      if (!mounted) return;
+      _tabController?.removeListener(_onTabChanged);
+      _tabController?.dispose();
+      if (value.isEmpty) {
+        _tabController = null;
+        setState(() {});
+        return;
+      }
+      _tabController = TabController(length: value.length, vsync: this)
+        ..addListener(_onTabChanged);
+      setState(() {});
+    });
+  }
+
+  Future<List<Categories>> fetchData() {
+    return Categories.fetchCategories();
+  }
+
+  @override
+  void dispose() {
+    _searchProduct.dispose();
+    _tabController?.removeListener(_onTabChanged);
+    _tabController?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
+    return FutureBuilder<List<Categories>>(
       future: dataAfterFetch,
       builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          if (snapshot.data != null) {
-            categories = snapshot.data as List<Categories>;
-            categoriesToMenu = categories!.map((e) => e.menus).toList();
-            if (_searchProduct.text == "") {
-              menu = categoriesToMenu;
-            } else {
-              menu = categoriesToMenu!
-                  .map((e) => e
-                      .where((element) => element.name
-                          .toLowerCase()
-                          .contains(_searchProduct.text.toLowerCase()))
-                      .toList())
-                  .toList();
-            }
-            return Scaffold(
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return _dataErrorState();
+        }
+
+        final fetchedCategories = snapshot.data;
+        if (fetchedCategories == null) {
+          return _dataErrorState();
+        }
+
+        if (fetchedCategories.isEmpty) {
+          return _dataEmptyState();
+        }
+
+        if (_tabController == null ||
+            _tabController!.length != fetchedCategories.length) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        categories = fetchedCategories;
+        final selectedCategoryIndex =
+            idx < categories!.length ? idx : categories!.length - 1;
+        categoriesToMenu = categories!.map((e) => e.menus).toList();
+        if (_searchProduct.text == "") {
+          menu = categoriesToMenu;
+        } else {
+          menu = categoriesToMenu!
+              .map((e) => e
+                  .where((element) => element.name
+                      .toLowerCase()
+                      .contains(_searchProduct.text.toLowerCase()))
+                  .toList())
+              .toList();
+        }
+
+        return Scaffold(
                 resizeToAvoidBottomInset: false,
-                body: GestureDetector(
-                  onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                  child: Row(
-                    children: [
+                body: SafeArea(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final menuContent = GestureDetector(
+                        onTap: () =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        child: Row(
+                          children: [
                       Flexible(
                         flex: 1,
                         child: Container(
@@ -124,7 +176,8 @@ class _MainMenuState extends State<MainMenu>
                                         children: [
                                           Expanded(
                                             child: Text(
-                                              categories![idx].name,
+                                              categories![selectedCategoryIndex]
+                                                  .name,
                                               style: TextStyle(
                                                   fontSize: 32,
                                                   fontWeight: FontWeight.bold),
@@ -135,7 +188,8 @@ class _MainMenuState extends State<MainMenu>
                                           ),
                                           Expanded(
                                             child: Text(
-                                              categories![idx].description,
+                                              categories![selectedCategoryIndex]
+                                                  .description,
                                               style: TextStyle(
                                                 fontSize: 18,
                                               ),
@@ -247,7 +301,7 @@ class _MainMenuState extends State<MainMenu>
                                                   child: Text("Clear"),
                                                   style:
                                                       ElevatedButton.styleFrom(
-                                                    primary: Colors.red,
+                                                    backgroundColor: Colors.red,
                                                   ),
                                                 ),
                                               ],
@@ -256,9 +310,7 @@ class _MainMenuState extends State<MainMenu>
                                           Expanded(
                                             flex: 8,
                                             child: ListView.builder(
-                                              itemCount: orders != null
-                                                  ? orders.length
-                                                  : 0,
+                                              itemCount: orders.length,
                                               itemBuilder: (context, index) =>
                                                   cardOrderModel(orders[index]),
                                             ),
@@ -334,10 +386,10 @@ class _MainMenuState extends State<MainMenu>
                                                     onTap: orders.isEmpty
                                                         ? null
                                                         : () async {
-                                                            var returnOrders =
+                                                            final returnOrders =
                                                                 await Navigator.of(
                                                                         context)
-                                                                    .push(
+                                                                    .push<List<OrderMenu>>(
                                                               MaterialPageRoute(
                                                                 builder:
                                                                     ((context) =>
@@ -351,16 +403,23 @@ class _MainMenuState extends State<MainMenu>
                                                                         )),
                                                               ),
                                                             );
+                                                            if (!mounted ||
+                                                                returnOrders ==
+                                                                    null) {
+                                                              return;
+                                                            }
+
                                                             setState(() {
                                                               orders =
                                                                   returnOrders;
-                                                              subTotal = 0;
-                                                              orders.forEach(
-                                                                  (element) {
-                                                                subTotal += element
-                                                                        .price *
-                                                                    element.qty;
-                                                              });
+                                                              subTotal = orders
+                                                                  .fold(
+                                                                0,
+                                                                (total, item) =>
+                                                                    total +
+                                                                    (item.price *
+                                                                        item.qty),
+                                                              );
                                                             });
                                                           },
                                                     child: Center(
@@ -388,43 +447,69 @@ class _MainMenuState extends State<MainMenu>
                           ),
                         ),
                       ),
-                    ],
+                          ],
+                        ),
+                      );
+
+                      if (constraints.maxWidth < 1100) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: 1100,
+                            height: constraints.maxHeight,
+                            child: menuContent,
+                          ),
+                        );
+                      }
+
+                      return menuContent;
+                    },
                   ),
                 ));
-          }
-        } else if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
-        return Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Colors.red,
-                  size: 60,
-                ),
-                SizedBox(
-                  height: 16,
-                ),
-                Text(
-                  "Data Error",
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 32,
-                    fontWeight: FontWeight.w600,
-                  ),
-                )
-              ],
-            ),
-          ),
-        );
       },
+    );
+  }
+
+  Widget _dataEmptyState() {
+    return const Scaffold(
+      body: Center(
+        child: Text(
+          "No menu data",
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dataErrorState() {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(
+              Icons.error_outline,
+              color: Colors.red,
+              size: 60,
+            ),
+            SizedBox(
+              height: 16,
+            ),
+            Text(
+              "Data Error",
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 32,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -435,7 +520,7 @@ class _MainMenuState extends State<MainMenu>
   Widget generateCardMenu(List<Menu> dataMenu) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: dataMenu.length == 0
+      child: dataMenu.isEmpty
           ? Center(
               child: Text(
                 "There's no menu",
@@ -452,9 +537,7 @@ class _MainMenuState extends State<MainMenu>
   }
 
   List<Widget> tabCategories(List<Categories> dataCategory) {
-    return dataCategory != null
-        ? dataCategory.map((e) => categoryModel(e.icon)).toList()
-        : [];
+    return dataCategory.map((e) => categoryModel(e.icon)).toList();
   }
 
   Widget cardProductModel(Menu data) {
@@ -797,7 +880,7 @@ class _MainMenuState extends State<MainMenu>
     );
   }
 
-  Future dialogProductDetail(Menu data) => showDialog(
+  Future<void> dialogProductDetail(Menu data) => showDialog(
         barrierDismissible: true,
         context: context,
         builder: (context) {

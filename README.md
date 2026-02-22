@@ -4,7 +4,16 @@ The DecafeApp is a mobile application that can help the performance of a restaur
 
 ## Getting Started
 
-### **This application only for android and work properly on device with screen size 2560x1600 pixel (Nexus 10) or higher (Android Tablet)**
+### Platform support
+- Android phone and tablet
+- iOS phone and tablet
+
+The UI now uses adaptive text scaling and a compact-screen fallback layout, so it can run on smaller screens in addition to large tablets.
+
+### Run locally
+1. `flutter pub get`
+2. Android: `flutter run -d android`
+3. iOS (macOS only): `cd ios && pod install && cd .. && flutter run -d ios`
 
 You can download the application on link below:
 https://drive.google.com/file/d/1yNCGRuzTtg7onF_hO7GedkMnjo_zhCen/view?usp=sharing
@@ -29,6 +38,4 @@ https://drive.google.com/file/d/1yNCGRuzTtg7onF_hO7GedkMnjo_zhCen/view?usp=shari
 ### Add notes for the specific order, add and substract order
 
 ![](https://github.com/Fadimhats1/DecafeApp/blob/main/about/dll.gif)
-
-
 

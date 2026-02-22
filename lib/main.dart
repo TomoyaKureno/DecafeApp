@@ -1,37 +1,56 @@
-import 'package:decafe_app/page/checkoutPage.dart';
 import 'package:decafe_app/page/mainMenuPage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   runApp(const DecafeApp());
 }
 
-class DecafeApp extends StatefulWidget {
+class DecafeApp extends StatelessWidget {
   const DecafeApp({Key? key}) : super(key: key);
 
-  @override
-  State<DecafeApp> createState() => _DecafeAppState();
-}
+  double _fontScale(Size size) {
+    final shortestSide = size.shortestSide;
+    if (shortestSide < 360) return 0.72;
+    if (shortestSide < 600) return 0.82;
+    if (shortestSide < 900) return 0.92;
+    return 1.0;
+  }
 
-class _DecafeAppState extends State<DecafeApp> {
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.leanBack);
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
     return MaterialApp(
       theme: ThemeData().copyWith(
         scaffoldBackgroundColor: Colors.white,
         colorScheme: ThemeData().colorScheme.copyWith(
-              primary: Color.fromRGBO(85, 206, 55, 1),
+              primary: const Color.fromRGBO(85, 206, 55, 1),
             ),
       ),
+      builder: (context, child) {
+        final mediaQuery = MediaQuery.of(context);
+        final currentScale = mediaQuery.textScaler.scale(1);
+        final scaledFactor = (currentScale * _fontScale(mediaQuery.size))
+            .clamp(0.75, 1.15)
+            .toDouble();
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            textScaler: TextScaler.linear(scaledFactor),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       debugShowCheckedModeBanner: false,
-      home: WillPopScope(child: MainMenu(),
-      onWillPop: () async => false,),
+      home: PopScope(
+        canPop: false,
+        child: const MainMenu(),
+      ),
     );
   }
 }
